@@ -6,8 +6,12 @@ from game_manager import GameManager
 
 game_manager = GameManager()
 
-app = FastAPI(title="DeviationGame API")
-
+app = FastAPI(
+        title="Davinci",
+        description="DavinciVSAI",
+        version="1.0.0",
+        docs_url="/swagger"
+    )
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # production da front URL ni yozing
@@ -18,7 +22,7 @@ app.add_middleware(
 
 
 # ─── REST Endpoints ────────────────────────────────────────────────────────────
-
+#todo make swagger for theses threee endpoints
 @app.get("/")
 async def root():
     return {"status": "ok", "message": "DeviationGame backend ishlayapti"}
