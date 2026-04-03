@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8">
+<title>DeviationGame — Test</title>
+<style>
+  body { font-family: monospace; max-width: 700px; margin: 40px auto; padding: 20px; background: #0f0f0f; color: #eee; }
+  h2 { color: #7ee787; }
+  button { background: #238636; color: white; border: none; padding: 8px 16px; cursor: pointer; border-radius: 6px; margin: 4px; font-size: 14px; }
+  button:hover { background: #2ea043; }
+  button.red { background: #da3633; }
+  button.red:hover { background: #f85149; }
+  input { background: #161b22; color: #eee; border: 1px solid #30363d; padding: 8px; border-radius: 6px; width: 200px; font-size: 14px; }
+  #log { background: #161b22; border: 1px solid #30363d; padding: 16px; height: 300px; overflow-y: auto; border-radius: 8px; margin-top: 16px; font-size: 13px; line-height: 1.6; }
+  .ok { color: #7ee787; }
+  .err { color: #f85149; }
+  .info { color: #58a6ff; }
+  .recv { color: #e3b341; }
+  hr { border-color: #30363d; margin: 20px 0; }
+  .row { display: flex; gap: 8px; align-items: center; margin: 6px 0; flex-wrap: wrap; }
+  label { color: #8b949e; font-size: 13px; }
+</style>
+</head>
+<body>
+
+<h2>🎮 DeviationGame — WebSocket Test</h2>
+
+<div>
+  <label>Backend URL:</label><br>
+  <div class="row">
+    <input id="serverUrl" value="ws://localhost:8000" />
+    <span style="color:#8b949e; font-size:12px">deploy bo'lsa wss://... ga o'zgartiring</span>
+  </div>
+</div>
+
+<hr>
+
+<!-- HOST PANEL -->
+<h2>🎨 HOST Panel</h2>
+<div class="row">
+  <button onclick="createRoom()">1. Xona yarat (POST)</button>
+  <span id="roomCodeDisplay" style="color:#e3b341; font-size:18px; font-weight:bold;"></span>
+</div>
+<div class="row">
+  <input id="hostName" value="Host" placeholder="Host nomi" />
+  <button onclick="connectHost()">2. Host sifatida ulan (WS)</button>
+</div>
+<div class="row">
+  <input id="category" value="Hayvonlar" placeholder="Kategoriya" />
+  <input id="answer" value="mushuk" placeholder="Javob (yashirin)" />
+  <button onclick="setCategory()">set_category</button>
+</div>
+<div class="row">
+  <button onclick="startGame()">start_game</button>
+  <button onclick="endGame()" class="red">end_game (ai_guess bilan)</button>
+  <input id="aiGuess" value="mushuk" placeholder="AI taxmini" />
+</div>
+
+<hr>
+
+<!-- PLAYER PANEL -->
+<h2>👤 PLAYER Panel</h2>
+<div class="row">
+  <input id="roomCode" placeholder="Room code (ABC123)" />
+  <input id="playerName" value="Jasur" placeholder="Ism" />
+  <button onclick="connectPlayer()">Qo'shil (WS)</button>
+</div>
+<div class="row">
+  <input id="guess" value="it" placeholder="Taxmin" />
+  <button onclick="submitGuess()">submit_guess</button>
+</div>
+
+<hr>
+
+<!-- LOG -->
+<div id="log"></div>
+<button onclick="document.getElementById('log').innerHTML=''">Logni tozala</button>
+
+<script>
+  let hostWs = null;
+  let playerWs = null;
+  let currentRoom = null;
+
+  function log(msg, type='info') {
+    const div = document.getElementById('log');
+    const time = new Date().toLocaleTimeString();
+    div.innerHTML += `<div class="${type}">[${time}] ${msg}</div>`;
+    div.scrollTop = div.scrollHeight;
+  }
+
+  function getBase() {
+    return document.getElementById('serverUrl').value.replace('ws://', 'http://').replace('wss://', 'https://');
+  }
+  function getWsBase() {
+    return document.getElementById('serverUrl').value;
+  }
+
+  // ── HOST ──────────────────────────────────────────────────────
+  async function createRoom() {
+    try {
+      const res = await fetch(getBase() + '/room/create', { method: 'POST' });
+      const data = await res.json();
+      currentRoom = data.room_code;
+      document.getElementById('roomCodeDisplay').textContent = currentRoom;
+      document.getElementById('roomCode').value = currentRoom;
+      log(`✅ Xona yaratildi: ${currentRoom}`, 'ok');
+    } catch(e) {
+      log(`❌ Xona yaratishda xato: ${e.message}`, 'err');
+    }
+  }
+
+  function connectHost() {
+    if (!currentRoom) { log('❌ Avval xona yarating!', 'err'); return; }
+    const name = document.getElementById('hostName').value;
+    const url = `${getWsBase()}/ws/${currentRoom}/host/${name}`;
+    log(`🔌 Host ulanmoqda: ${url}`, 'info');
+    hostWs = new WebSocket(url);
+
+    hostWs.onopen = () => log('✅ Host WebSocket ulandi!', 'ok');
+    hostWs.onmessage = (e) => {
+      const data = JSON.parse(e.data);
+      log(`📩 HOST ← ${JSON.stringify(data)}`, 'recv');
+    };
+    hostWs.onerror = (e) => log(`❌ Host WS xato`, 'err');
+    hostWs.onclose = () => log('🔌 Host WS yopildi', 'err');
+  }
+
+  function setCategory() {
+    if (!hostWs) { log('❌ Host ulanmagan!', 'err'); return; }
+    const msg = {
+      event: 'set_category',
+      category: document.getElementById('category').value,
+      answer: document.getElementById('answer').value,
+    };
+    hostWs.send(JSON.stringify(msg));
+    log(`📤 HOST → ${JSON.stringify(msg)}`, 'info');
+  }
+
+  function startGame() {
+    if (!hostWs) { log('❌ Host ulanmagan!', 'err'); return; }
+    const msg = { event: 'start_game', image: 'data:image/png;base64,TEST_IMAGE' };
+    hostWs.send(JSON.stringify(msg));
+    log(`📤 HOST → ${JSON.stringify(msg)}`, 'info');
+  }
+
+  function endGame() {
+    if (!hostWs) { log('❌ Host ulanmagan!', 'err'); return; }
+    const msg = {
+      event: 'end_game',
+      ai_guess: document.getElementById('aiGuess').value,
+    };
+    hostWs.send(JSON.stringify(msg));
+    log(`📤 HOST → ${JSON.stringify(msg)}`, 'info');
+  }
+
+  // ── PLAYER ────────────────────────────────────────────────────
+  function connectPlayer() {
+    const code = document.getElementById('roomCode').value.toUpperCase();
+    const name = document.getElementById('playerName').value;
+    if (!code || !name) { log('❌ Room code va ism kiriting!', 'err'); return; }
+
+    const url = `${getWsBase()}/ws/${code}/player/${name}`;
+    log(`🔌 Player ulanmoqda: ${url}`, 'info');
+    playerWs = new WebSocket(url);
+
+    playerWs.onopen = () => log(`✅ Player "${name}" ulandi!`, 'ok');
+    playerWs.onmessage = (e) => {
+      const data = JSON.parse(e.data);
+      log(`📩 PLAYER ← ${JSON.stringify(data)}`, 'recv');
+    };
+    playerWs.onerror = () => log('❌ Player WS xato', 'err');
+    playerWs.onclose = () => log('🔌 Player WS yopildi', 'err');
+  }
+
+  function submitGuess() {
+    if (!playerWs) { log('❌ Player ulanmagan!', 'err'); return; }
+    const msg = { event: 'submit_guess', guess: document.getElementById('guess').value };
+    playerWs.send(JSON.stringify(msg));
+    log(`📤 PLAYER → ${JSON.stringify(msg)}`, 'info');
+  }
+</script>
+</body>
+</html>
